@@ -56,7 +56,18 @@ To add dynamic_attributes to an AR model, take the following steps:
     class DynamicModel < ActiveRecord::Base
       has_dynamic_attributes
     end  
-  
+
+* Configure dynamic_attributes
+
+ * Non necessary configuration of dynamic attributes for cases where you need to know your dynamic attributes
+ * Initializes configured attributes with default value or nil instead
+
+    class DynamicModel < ActiveRecord::Base
+      has_dynamic_attributes
+      dynamic_attribute :field_test
+      dynamic_attribute :field_name, :default => 'Jake'
+    end
+
 * Now you can add dynamic attributes in several ways. Examples:
 
   - New: DynamicModel.new(:title => 'Hello', :field_summary => 'This is a dynamic attribute')

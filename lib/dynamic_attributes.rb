@@ -1,4 +1,3 @@
-
 # Adds the has_dynamic_attributes method in ActiveRecord::Base, which can be used to configure the module.
 class << ActiveRecord::Base  
   
@@ -18,8 +17,14 @@ class << ActiveRecord::Base
     self.dynamic_attribute_prefix = options[:dynamic_attribute_prefix] || 'field_'
     cattr_accessor :destroy_dynamic_attribute_for_nil
     self.destroy_dynamic_attribute_for_nil = options[:destroy_dynamic_attribute_for_nil] || false    
+    class_attribute :dynamic_attributes_config
+    self.dynamic_attributes_config = {}
 
     include DynamicAttributes 
+  end
+
+  def dynamic_attribute name, options = {}
+    self.dynamic_attributes_config[name.to_s] = options
   end
 end
 
@@ -27,11 +32,16 @@ end
 module DynamicAttributes
 
     # Overrides the initializer to take dynamic attributes into account
-    def initialize(attributes = nil)
+    def initialize(attributes = nil, options = {})
       dynamic_attributes = {}
       (attributes ||= {}).each{|att,value| dynamic_attributes[att] = value if att.to_s.starts_with?(self.dynamic_attribute_prefix) }
-      super(attributes.except(*dynamic_attributes.keys))   
-      set_dynamic_attributes(dynamic_attributes)    
+      super(attributes.except(*dynamic_attributes.keys), options)
+      dynamic_attributes.stringify_keys!
+      # declared attributes
+      default_dynamic_attributes = dynamic_attributes_config.inject({}) { |sum, (k,v)| sum[k] = v.fetch(:default, nil); sum }
+      # remember declared attributes to be saved
+      dynamic_attributes_config.keys.each {|attribute| persisting_dynamic_attributes << attribute}
+      set_dynamic_attributes(default_dynamic_attributes.merge(dynamic_attributes))
     end
     
     # Returns whether a given attribute is a dynamic attribute
@@ -65,9 +75,6 @@ module DynamicAttributes
       (read_attribute(self.dynamic_attribute_field) || {}).each {|att, value| set_dynamic_attribute(att, value); self.destroy_dynamic_attribute_for_nil = false if value.nil? }
     end
     
-    # Explicitly define after_find for Rails 2.x
-    def after_find; populate_dynamic_attributes end    
-
     # Overrides update_attributes to take dynamic attributes into account
     def update_attributes(attributes)  
       set_dynamic_attributes(attributes)  
@@ -93,13 +100,6 @@ module DynamicAttributes
       object.before_save :evaluate_dynamic_attributes    
       object.serialize object.dynamic_attribute_field
     end
-    
-    # Gets the object's singleton class. Backported from Rails 2.3.8 to support older versions of Rails.
-    def singleton_class
-      class << self
-        self
-      end
-    end      
     
     # Defines an accessor for the given attribute. It is defined withinin the public scope to ensure the
     # accessor is publicly available in ruby 1.9.
